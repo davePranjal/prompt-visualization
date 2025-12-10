@@ -20,6 +20,9 @@ dependencies = [
     "setuptools>=65.5.1",
     "jsondiff>=2.2.1",
     "google-genai>=1.47.0",
+    "pytest>=8.0.0",
+    "openai>=1.25.2",
+    "huggingface-hub>=0.23.0",
 ]
 
 [build-system]
@@ -30,5 +33,3 @@ build-backend = "hatchling.build"
 # This tells the builder to include the 'prompt_visualization' directory
 # as the main package content.
 packages = ["prompt_visualization"]
-
-

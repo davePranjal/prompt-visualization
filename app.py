@@ -6,6 +6,7 @@ import json
 import difflib
 from prompt_visualization.llm_engine import configure_genai, run_prompt_experiment
 from prompt_visualization.consistency_evaluator import calculate_consistency_metric
+from prompt_visualization.utils import get_clean_json
 import streamlit.components.v1 as components
 
 # --- Page Configuration and Initialization ---
@@ -40,16 +41,6 @@ def get_registered_prompts():
 
 
 # --- Helper Functions ---
-def get_clean_json(raw_text):
-    """Cleans raw model output and attempts to parse it as JSON."""
-    if not isinstance(raw_text, str):
-        return None
-    clean_text = raw_text.strip().replace("```json", "").replace("```", "")
-    try:
-        return json.loads(clean_text)
-    except json.JSONDecodeError:
-        return None
-
 def load_system_prompt_file():
     uploaded_file = st.session_state.get("prompt_uploader")
     if uploaded_file is not None:
@@ -68,7 +59,7 @@ def load_json_input_file():
 # --- Configuration ---
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
-    model_name = st.secrets.get("MODEL_NAME", "gemini-1.0-pro")
+    model_name = st.secrets.get("MODEL_NAME")
     configure_genai(api_key)
 except (KeyError, FileNotFoundError):
     st.error("`GOOGLE_API_KEY` not found. Please create a `.streamlit/secrets.toml` file.")
