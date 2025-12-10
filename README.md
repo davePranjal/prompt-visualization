@@ -7,6 +7,7 @@ The primary goal of this application is to run a given prompt against a raw JSON
 ## Features
 
 - **Interactive UI**: A Streamlit-based web interface to control experiments.
+- **Configurable Model**: Easily switch the Gemini model via a configuration file.
 - **Secure Secret Management**: Uses Streamlit's built-in secrets management for API keys.
 - **Consistency Testing**: Run the same prompt multiple times to check for variations in the LLM's output.
 - **Performance Logging**: Automatically logs execution time (latency) for each run.
@@ -58,7 +59,7 @@ This project uses `uv` for fast and reliable dependency management.
 
 ## Configuration
 
-This project uses Streamlit's secrets management to handle your API key securely.
+This project uses Streamlit's secrets management to handle your API key and model configuration securely.
 
 1.  **Create the Secrets Directory**
     In your project's root directory, create a new directory named `.streamlit`.
@@ -72,12 +73,16 @@ This project uses Streamlit's secrets management to handle your API key securely
     touch .streamlit/secrets.toml
     ```
 
-3.  **Add Your API Key**
-    Open `.streamlit/secrets.toml` and add your Google API key in the following format:
+3.  **Add Your Configuration**
+    Open `.streamlit/secrets.toml` and add your Google API key. You can also optionally specify a model name.
     ```toml
+    # Required: Your Google API Key
     GOOGLE_API_KEY = "your_google_api_key"
+
+    # Optional: The Gemini model to use. Defaults to "gemini-1.0-pro" if not set.
+    # Example: MODEL_NAME = "gemini-1.5-flash"
+    MODEL_NAME = "gemini-1.0-pro"
     ```
-    This file is included in `.gitignore` and will not be committed to your repository.
 
 ## Execution
 

@@ -1,93 +1,123 @@
 import streamlit as st
 import pandas as pd
 import mlflow
-from llm_engine import run_prompt_experiment
+import time
+import json
+from llm_engine import configure_genai, run_prompt_experiment
+from consistency_evaluator import calculate_consistency_metric
 
-# Page configuration
-st.set_page_config(layout="wide")
+# --- Page Configuration and Initialization ---
+st.set_page_config(layout="wide", page_title="LLM Prompt Evaluator")
+st.title("LLM Prompt Consistency & Evaluation Tool")
 
-# Initialize MLflow client
-mlflow.set_tracking_uri("http://localhost:5010")
-client = mlflow.tracking.MlflowClient()
+# --- Cached Functions for Resource Management ---
+@st.cache_resource
+def get_mlflow_client():
+    """Initializes and caches the MLflow client."""
+    try:
+        mlflow.set_tracking_uri("http://localhost:5010")
+        mlflow_client = mlflow.tracking.MlflowClient()
+        mlflow_client.search_experiments()
+        return mlflow_client
+    except Exception as e:
+        st.warning(f"Could not connect to MLflow. Logging and evaluation are disabled. Error: {e}")
+        return None
 
-# Initialize session state for the prompt. This runs only once.
+# --- Configuration ---
+try:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+    model_name = st.secrets.get("MODEL_NAME")
+    configure_genai(api_key)
+except (KeyError, FileNotFoundError):
+    st.error("`GOOGLE_API_KEY` not found. Please create a `.streamlit/secrets.toml` file.")
+    st.stop()
+
+client = get_mlflow_client()
+
+# Initialize session state
 if 'system_prompt' not in st.session_state:
-    st.session_state.system_prompt = ""
+    st.session_state.system_prompt = "You are an expert system that extracts structured data from recipes. Respond with only valid JSON."
+if 'raw_json_input' not in st.session_state:
+    st.session_state.raw_json_input = '{\n  "recipe_text": "A simple cake recipe with 2 cups of flour, 1 cup of sugar, and 3 eggs."\n}'
 
-st.title("LLM Prompt Consistency Tester")
 
 # --- Sidebar ---
 with st.sidebar:
     st.header("Experiment Configuration")
-    num_runs = st.slider("Number of Runs", 1, 10, 5)
-    st.markdown("[View MLflow UI](http://localhost:5010)")
-
-    st.divider()
-
-    st.header("Import Prompt from MLflow")
-    try:
-        experiments = client.search_experiments()
-        exp_names = [exp.name for exp in experiments]
-        selected_exp_name = st.selectbox("Select Experiment", exp_names)
-
-        selected_exp = next((exp for exp in experiments if exp.name == selected_exp_name), None)
-
-        if selected_exp:
-            # Sort runs by start time to show the most recent first
-            runs = client.search_runs(experiment_ids=[selected_exp.experiment_id], order_by=["start_time DESC"])
-            run_options = {f"{run.info.run_name} ({run.info.run_id[:8]})": run.info.run_id for run in runs}
-            
-            if run_options:
-                selected_run_display = st.selectbox("Select Run", options=list(run_options.keys()))
-                
-                if st.button("Import Prompt"):
-                    run_id = run_options[selected_run_display]
-                    local_path = client.download_artifacts(run_id, "system_prompt.txt")
-                    with open(local_path, "r") as f:
-                        # This now correctly updates the session state, and Streamlit will
-                        # automatically reflect this change in the text_area below.
-                        st.session_state.system_prompt = f.read()
-                    st.success("Prompt imported successfully!")
-            else:
-                st.info("No runs found in this experiment.")
-    except Exception as e:
-        st.error(f"Could not connect to MLflow: {e}")
-
+    num_runs = st.slider("Number of Runs for Consistency Check", 1, 10, 3)
+    st.info(f"Using model: `{model_name}`")
+    
+    if client:
+        st.markdown("[View MLflow UI](http://localhost:5010)")
+        st.divider()
+        # The prompt import functionality can be added back here if desired
 
 # --- Main Input Area ---
 col1, col2 = st.columns(2)
 
 with col1:
     st.header("System Prompt")
-    # By using a 'key', this text_area is directly linked to st.session_state.system_prompt.
-    # Streamlit handles the two-way data binding automatically.
     st.text_area("System Prompt", height=300, key="system_prompt")
 
 with col2:
     st.header("Raw JSON Input")
-    raw_json_input = st.text_area("Enter the raw JSON input here", height=300)
+    st.text_area("Raw JSON Input", height=300, key="raw_json_input")
 
-# Execution
-if st.button("Run Experiment"):
-    # We now read the value directly from the session state.
-    if not st.session_state.system_prompt or not raw_json_input:
+# --- Execution and Evaluation ---
+if st.button("Run Experiment", type="primary"):
+    if not st.session_state.system_prompt or not st.session_state.raw_json_input:
         st.error("Please provide both a system prompt and raw JSON input.")
     else:
         results = []
+        run_ids = []
+        
+        # Get the current experiment ID to associate runs correctly
+        # We'll assume a default experiment or create one if it doesn't exist
+        experiment_name = "LLM_Consistency_Tests"
+        exp = client.get_experiment_by_name(experiment_name)
+        if exp is None:
+            exp_id = client.create_experiment(experiment_name)
+        else:
+            exp_id = exp.experiment_id
+
         progress_bar = st.progress(0)
         
         for i in range(num_runs):
-            run_name = f"run_{i+1}"
-            result = run_prompt_experiment(raw_json_input, st.session_state.system_prompt, run_name)
-            results.append({
-                "Run": i + 1,
-                "Status": result["status"],
-                "Latency (s)": f"{result['latency']:.2f}",
-                "Output Preview": result["output_text"][:200] + "..." if len(result["output_text"]) > 200 else result["output_text"]
-            })
+            run_name = f"batch_{int(time.time())}_run_{i+1}"
+            result = run_prompt_experiment(
+                raw_json_input=st.session_state.raw_json_input,
+                system_prompt=st.session_state.system_prompt,
+                run_name=run_name,
+                model_name=model_name
+            )
+            results.append(result)
+            if result.get("run_id"):
+                run_ids.append(result["run_id"])
+            
             progress_bar.progress((i + 1) / num_runs)
 
-        # Display results
-        st.header("Experiment Results")
-        df = pd.DataFrame(results)
-        st.table(df)
+        # --- Display Results Table ---
+        st.header("Experiment Run Results")
+        display_data = [{
+            "Run": i + 1,
+            "Status": r["status"],
+            "Latency (s)": f"{r['latency']:.2f}",
+            "Output Preview": r["output_text"][:200] + "..."
+        } for i, r in enumerate(results)]
+        st.table(pd.DataFrame(display_data))
+
+        # --- Consistency Calculation and Display ---
+        if client and len(run_ids) > 1:
+            st.header("Consistency Evaluation")
+            with st.spinner("Calculating consistency score..."):
+                consistency_score = calculate_consistency_metric(exp_id, run_ids, artifact_path="output.json")
+                
+                # Log the score to the first run of the batch
+                try:
+                    client.log_metric(run_ids[0], "batch_consistency_score", consistency_score)
+                    st.metric("Batch Consistency Score", f"{consistency_score:.4f}")
+                    st.caption(f"Score logged to parent run: `{run_ids[0]}`")
+                except Exception as e:
+                    st.error(f"Failed to log consistency score to MLflow: {e}")
+        elif len(run_ids) <= 1:
+            st.info("At least 2 runs are required to calculate a consistency score.")
