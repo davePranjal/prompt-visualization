@@ -29,6 +29,7 @@ def run_prompt_experiment(raw_json_input, system_prompt, run_name, model_name):
     
     with mlflow.start_run(run_name=run_name) as run:
         run_id = run.info.run_id
+        output_text = "No output generated."
         try:
             # Log inputs
             mlflow.log_param("model_name", model_name)
@@ -40,25 +41,42 @@ def run_prompt_experiment(raw_json_input, system_prompt, run_name, model_name):
             response = model.generate_content(message)
             end_time = time.time()
             latency = end_time - start_time
+            
+            output_text = response.text if hasattr(response, 'text') else "Blocked or empty response"
 
-            # Log outputs
+            # --- Log Standard and New Metrics ---
             mlflow.log_metric("latency", latency)
+
+            # Log token usage from usage_metadata
+            if hasattr(response, 'usage_metadata'):
+                mlflow.log_metric("prompt_token_count", response.usage_metadata.prompt_token_count)
+                mlflow.log_metric("candidates_token_count", response.usage_metadata.candidates_token_count)
+                mlflow.log_metric("total_token_count", response.usage_metadata.total_token_count)
+
+            # Log finish reason from the primary candidate
+            finish_reason = "UNKNOWN"
+            if response.candidates and hasattr(response.candidates[0], 'finish_reason'):
+                finish_reason = response.candidates[0].finish_reason.name
+            mlflow.log_param("finish_reason", finish_reason)
+
+            # Log safety ratings from prompt_feedback
+            if hasattr(response, 'prompt_feedback') and response.prompt_feedback.safety_ratings:
+                for rating in response.prompt_feedback.safety_ratings:
+                    safety_category = rating.category.name.lower()
+                    safety_probability = rating.probability.name
+                    mlflow.log_param(f"safety_{safety_category}", safety_probability)
             
             # Attempt to log the response as both a text file and a JSON artifact
             try:
-                # Clean the response text to make it valid JSON
-                # This is a common requirement when dealing with LLM text outputs
-                cleaned_text = response.text.strip().replace("```json", "").replace("```", "")
+                cleaned_text = output_text.strip().replace("```json", "").replace("```", "")
                 output_data = json.loads(cleaned_text)
                 mlflow.log_dict(output_data, "output.json")
-            except json.JSONDecodeError:
-                # If it's not valid JSON, just log as text and move on
-                mlflow.log_text(response.text, "output.txt")
-
+            except (json.JSONDecodeError, AttributeError):
+                mlflow.log_text(output_text, "output.txt")
 
             return {
                 "status": "Pass",
-                "output_text": response.text,
+                "output_text": output_text,
                 "latency": latency,
                 "run_id": run_id
             }
