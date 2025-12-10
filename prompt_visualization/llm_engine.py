@@ -6,6 +6,7 @@ import json
 
 # Set MLflow tracking URI
 mlflow.set_tracking_uri("http://localhost:5010")
+mlflow.gemini.autolog()
 
 def configure_genai(api_key):
     """Configures the generative AI model."""

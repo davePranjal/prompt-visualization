@@ -5,9 +5,9 @@ description = ""
 authors = [
     {name = "Your Name", email = "you@example.com"},
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 dependencies = [
-    "mlflow>=2.14.1",
+    "mlflow>=3.7.0",
     "streamlit>=1.35.0",
     "google-generativeai>=0.5.4",
     "pandas>=2.2.2",
@@ -18,10 +18,17 @@ dependencies = [
     "cachetools>=5.3.3",
     "click>=8.0",
     "setuptools>=65.5.1",
-    "openai>=1.25.2",
-    "huggingface-hub>=0.23.0",
+    "jsondiff>=2.2.1",
+    "google-genai>=1.47.0",
 ]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# This tells the builder to include the 'prompt_visualization' directory
+# as the main package content.
+packages = ["prompt_visualization"]
+
+
