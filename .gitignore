@@ -1,0 +1,30 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Secrets
+.env
+*.env
+
+# IDE configuration
+.idea/
+.vscode/
+
+# MLflow local tracking
+mlruns/
+mlflow-artifacts/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Streamlit
+.streamlit/
